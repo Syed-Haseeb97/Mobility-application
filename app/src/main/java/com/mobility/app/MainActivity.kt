@@ -36,12 +36,12 @@ class MainActivity : ComponentActivity() {
     }
     private fun navButton(label: String, value: String) = Button(this).apply { text=label; isAllCaps=false; textSize=12f; setTextColor(if(tab==value) lime else Color.WHITE); setBackgroundColor(Color.TRANSPARENT); setOnClickListener { when(value) { "market" -> market(); "trip" -> trip(); else -> history() }; updateNav() } }
     private fun updateNav() { val nav = root.getChildAt(1) as LinearLayout; for(i in 0 until nav.childCount) (nav.getChildAt(i) as Button).setTextColor(if(listOf("market","trip","history")[i]==tab) lime else Color.WHITE) }
-    private fun clear() { content.removeAllViews(); web=null }
+    private fun clear() { content.removeAllViews() }
     @SuppressLint("SetJavaScriptEnabled") private fun market() {
-        tab="market"; clear(); val v=WebView(this); web=v; v.setBackgroundColor(ink); v.settings.javaScriptEnabled=true; v.settings.domStorageEnabled=true; v.settings.loadsImagesAutomatically=true; v.settings.setGeolocationEnabled(true)
+        tab="market"; clear(); val v=web ?: WebView(this).also { web=it }; v.setBackgroundColor(ink); v.settings.javaScriptEnabled=true; v.settings.domStorageEnabled=true; v.settings.loadsImagesAutomatically=true; v.settings.setGeolocationEnabled(true)
         v.webViewClient=object: WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean { val u=Uri.parse(url); if(u.scheme=="https" && u.host=="mobility-03.vercel.app") return false; startActivity(Intent(Intent.ACTION_VIEW,u)); return true } }
         v.webChromeClient=object: WebChromeClient() { override fun onGeolocationPermissionsShowPrompt(origin:String, callback:GeolocationPermissions.Callback) { val hasLocation = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED; callback.invoke(origin, origin=="https://mobility-03.vercel.app" && hasLocation, false) } }
-        content.addView(v,LinearLayout.LayoutParams(-1,-1)); v.loadUrl("https://mobility-03.vercel.app")
+        content.addView(v,LinearLayout.LayoutParams(-1,-1)); if(v.url.isNullOrBlank()) v.loadUrl("https://mobility-03.vercel.app")
     }
     private fun trip() {
         tab="trip"; clear(); val scroll=ScrollView(this); val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(22),dp(24),dp(22),dp(22)); setBackgroundColor(ink) }; scroll.addView(page); content.addView(scroll)
