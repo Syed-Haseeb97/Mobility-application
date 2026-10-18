@@ -39,8 +39,8 @@ class MainActivity : ComponentActivity() {
     private fun clear() { content.removeAllViews(); web=null }
     @SuppressLint("SetJavaScriptEnabled") private fun market() {
         tab="market"; clear(); val v=WebView(this); web=v; v.setBackgroundColor(ink); v.settings.javaScriptEnabled=true; v.settings.domStorageEnabled=true; v.settings.loadsImagesAutomatically=true; v.settings.setGeolocationEnabled(true)
-        v.webViewClient=object: WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean { val u=Uri.parse(url); if(u.scheme=="https" && (u.host=="mobility-03.vercel.app" || u.host?.endsWith(".vercel.app")==true)) return false; startActivity(Intent(Intent.ACTION_VIEW,u)); return true } }
-        v.webChromeClient=object: WebChromeClient() { override fun onGeolocationPermissionsShowPrompt(origin:String, callback:GeolocationPermissions.Callback) { callback.invoke(origin, origin=="https://mobility-03.vercel.app", false) } }
+        v.webViewClient=object: WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean { val u=Uri.parse(url); if(u.scheme=="https" && u.host=="mobility-03.vercel.app") return false; startActivity(Intent(Intent.ACTION_VIEW,u)); return true } }
+        v.webChromeClient=object: WebChromeClient() { override fun onGeolocationPermissionsShowPrompt(origin:String, callback:GeolocationPermissions.Callback) { val hasLocation = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED; callback.invoke(origin, origin=="https://mobility-03.vercel.app" && hasLocation, false) } }
         content.addView(v,LinearLayout.LayoutParams(-1,-1)); v.loadUrl("https://mobility-03.vercel.app")
     }
     private fun trip() {
