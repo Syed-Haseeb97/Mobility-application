@@ -45,7 +45,7 @@ class RideTrackingService : Service(), LocationListener {
             val speed = if (location.hasSpeed() && location.speed.isFinite()) location.speed.toDouble() else meters / seconds
             if (speed >= 0.8) moving = seconds.toLong().coerceAtLeast(0L)
         }
-        val speedKmh = if (location.hasSpeed() && location.speed.isFinite()) (location.speed * 3.6).coerceAtLeast(0f).toDouble() else 0.0
+        val speedKmh = if (location.hasSpeed() && location.speed.isFinite()) (location.speed * 3.6).coerceAtLeast(0.0).toDouble() else 0.0
         TripStore.update(this, location, delta, moving, speedKmh); previous = location; previousTime = now
         val m = TripMetrics.read(this); (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification(String.format(java.util.Locale.US, "%.0f km/h · %.2f km", m.currentSpeedKmh, m.distanceMeters / 1000.0)))
     }
