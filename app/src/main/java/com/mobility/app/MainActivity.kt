@@ -21,6 +21,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -198,7 +199,7 @@ class MainActivity : ComponentActivity() {
         clear()
         val scroll = ScrollView(this).apply { isFillViewport = true; clipToPadding = false; setBackgroundColor(ink) }
         val page = pageColumn()
-        scroll.addView(page, ScrollView.LayoutParams(-1, -2))
+        scroll.addView(page, FrameLayout.LayoutParams(-1, -2))
         content.addView(scroll, LinearLayout.LayoutParams(-1, -1))
 
         page.addView(eyebrow("MOBILITY  /  RIDE TELEMETRY"))
@@ -307,7 +308,7 @@ class MainActivity : ComponentActivity() {
         clear()
         val scroll = ScrollView(this).apply { isFillViewport = true; clipToPadding = false; setBackgroundColor(ink) }
         val page = pageColumn()
-        scroll.addView(page, ScrollView.LayoutParams(-1, -2))
+        scroll.addView(page, FrameLayout.LayoutParams(-1, -2))
         content.addView(scroll, LinearLayout.LayoutParams(-1, -1))
         val m = TripMetrics.read(this)
 
