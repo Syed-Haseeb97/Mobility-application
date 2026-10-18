@@ -26,3 +26,68 @@ jobs:
           name: mobility-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+  publish-release:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check whether a stable signing key is configured
+        id: signing
+        env:
+          ANDROID_SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_SIGNING_KEY_BASE64" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release publishing skipped. Configure the four ANDROID_* signing secrets to enable safe in-app updates."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.signing.outputs.configured == 'true'
+      - uses: actions/setup-java@v4
+        if: steps.signing.outputs.configured == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.signing.outputs.configured == 'true'
+        with:
+          gradle-version: '8.11.1'
+      - name: Decode stable signing key
+        if: steps.signing.outputs.configured == 'true'
+        env:
+          ANDROID_SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/mobility-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/mobility-release.jks" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Build signed update APK
+        if: steps.signing.outputs.configured == 'true'
+        run: |
+          gradle assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk MOBILITY-latest.apk
+      - name: Publish or replace the latest Android release
+        if: steps.signing.outputs.configured == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          target_commitish: main
+          name: MOBILITY Android build ${{ github.run_number }}
+          body: |
+            Automatically published from main.
+
+            versionCode: ${{ github.run_number }}
+            commit: ${{ github.sha }}
+
+            Install through MOBILITY > History > Check for app updates.
+          files: MOBILITY-latest.apk
+          overwrite_files: true
+          make_latest: true
+          fail_on_unmatched_files: true
+
