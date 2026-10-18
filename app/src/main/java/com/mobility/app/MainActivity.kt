@@ -18,6 +18,7 @@ import android.os.Environment
 import android.view.Gravity
 import android.view.View
 import android.webkit.GeolocationPermissions
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -173,7 +174,10 @@ class MainActivity : ComponentActivity() {
     private fun market() {
         tab = "market"
         clear()
-        val view = web ?: WebView(this).also { web = it }
+        val view = web ?: WebView(this).also {
+            it.addJavascriptInterface(MobilityBridge(), "MobilityAndroid")
+            web = it
+        }
         view.setBackgroundColor(ink)
         view.settings.javaScriptEnabled = true
         view.settings.domStorageEnabled = true
@@ -241,9 +245,14 @@ class MainActivity : ComponentActivity() {
         page.addView(durationCard, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(12) })
 
         page.addView(eyebrow("TRIP DETAILS").apply { setPadding(0, dp(26), 0, dp(10)) })
+        val linkedBookingId = pendingId.ifBlank { TripMetrics.read(this).tripId }
         val booking = EditText(this).apply {
-            hint = "Enter your booking reference"
-            setSingleLine(true)
+            hint = "Book a vehicle in Explore to link a booking"
+            setText(linkedBookingId)
+            isSingleLine = true
+            isFocusable = false
+            isFocusableInTouchMode = false
+            isClickable = false
             textSize = 14f
             setTextColor(Color.WHITE)
             setHintTextColor(muted)
@@ -253,7 +262,13 @@ class MainActivity : ComponentActivity() {
         page.addView(booking, LinearLayout.LayoutParams(-1, dp(54)))
         page.addView(actionButton("Start GPS tracking", true) {
             val id = booking.text.toString().trim()
-            if (id.isBlank()) booking.error = "Booking reference required"
+            if (id.isBlank()) {
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage("Create a demo booking from Explore first. Its reference will be linked here automatically.")
+                    .setPositiveButton("Open Explore") { _, _ -> market() }
+                    .setNegativeButton("Not now", null)
+                    .show()
+            }
             else if (TripMetrics.read(this@MainActivity).active) {
                 AlertDialog.Builder(this@MainActivity).setMessage("A trip is already active on this device.").setPositiveButton("OK", null).show()
             } else {
@@ -494,7 +509,31 @@ class MainActivity : ComponentActivity() {
 
     private fun startTrip(id: String) {
         RideTrackingService.start(this, id)
+        pendingId = ""
         trip()
+    }
+
+    /** Receives only booking IDs from the trusted MOBILITY website loaded in the WebView. */
+    private inner class MobilityBridge {
+        @JavascriptInterface
+        fun onBookingCreated(bookingId: String) {
+            val id = bookingId.trim()
+            if (!Regex("MOB-[A-Za-z0-9-]{3,32}").matches(id)) return
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                pendingId = id
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Booking linked")
+                    .setMessage("Demo booking $id is linked to My trip. No payment was processed. Start GPS tracking only when the rental actually begins.")
+                    .setNegativeButton("Stay in Explore", null)
+                    .setPositiveButton("Open My trip") { _, _ ->
+                        trip()
+                        updateNav()
+                    }
+                    .show()
+            }
+        }
     }
 
     private fun pageColumn() = LinearLayout(this).apply {
