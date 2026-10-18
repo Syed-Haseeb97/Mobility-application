@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -31,17 +32,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); window.statusBarColor = ink; window.navigationBarColor = ink; shell(); market(); onBackPressedDispatcher.addCallback(this, object: OnBackPressedCallback(true) { override fun handleOnBackPressed() { if (tab == "market" && web?.canGoBack() == true) web?.goBack() else if (tab != "market") market() else finish() } }) }
     private fun shell() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ink) }; content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ink) }; root.addView(content, LinearLayout.LayoutParams(-1,0,1f))
-        val nav = LinearLayout(this).apply { setBackgroundColor(Color.rgb(17,19,18)); setPadding(6,4,6,8) }
-        nav.addView(navButton("Explore","market"), LinearLayout.LayoutParams(0,dp(50),1f)); nav.addView(navButton("My trip","trip"), LinearLayout.LayoutParams(0,dp(50),1f)); nav.addView(navButton("Trip history","history"), LinearLayout.LayoutParams(0,dp(50),1f)); root.addView(nav); setContentView(root)
+        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(7),dp(6),dp(7),dp(6)); background = rounded(Color.rgb(28,31,29), 36); elevation = dp(16).toFloat() }
+        nav.addView(navButton("⌂","Explore","market"), LinearLayout.LayoutParams(0,dp(54),1f)); nav.addView(navButton("◉","My trip","trip"), LinearLayout.LayoutParams(0,dp(54),1f)); nav.addView(navButton("↻","History","history"), LinearLayout.LayoutParams(0,dp(54),1f))
+        val navWrap = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(dp(20),dp(5),dp(20),dp(18)); setBackgroundColor(Color.TRANSPARENT); addView(nav, LinearLayout.LayoutParams(-1,dp(66))) }
+        root.addView(navWrap, LinearLayout.LayoutParams(-1,-2)); setContentView(root)
     }
-    private fun navButton(label: String, value: String) = Button(this).apply { text=label; isAllCaps=false; textSize=12f; setTextColor(if(tab==value) lime else Color.WHITE); setBackgroundColor(Color.TRANSPARENT); setOnClickListener { when(value) { "market" -> market(); "trip" -> trip(); else -> history() }; updateNav() } }
-    private fun updateNav() { val nav = root.getChildAt(1) as LinearLayout; for(i in 0 until nav.childCount) (nav.getChildAt(i) as Button).setTextColor(if(listOf("market","trip","history")[i]==tab) lime else Color.WHITE) }
+    private fun navButton(symbol: String, label: String, value: String) = Button(this).apply { text="$symbol  $label"; isAllCaps=false; textSize=12f; setTextColor(if(tab==value) ink else Color.rgb(220,225,220)); background = rounded(if(tab==value) lime else Color.TRANSPARENT, 28); elevation = if(tab==value) dp(3).toFloat() else 0f; setPadding(dp(4),0,dp(4),0); minHeight=0; minimumHeight=0; stateListAnimator=null; setOnClickListener { when(value) { "market" -> market(); "trip" -> trip(); else -> history() }; updateNav() } }
+    private fun updateNav() { val wrap = root.getChildAt(1) as LinearLayout; val nav = wrap.getChildAt(0) as LinearLayout; val values=listOf("market","trip","history"); for(i in 0 until nav.childCount) { val b=nav.getChildAt(i) as Button; val selected=values[i]==tab; b.setTextColor(if(selected) ink else Color.rgb(220,225,220)); b.background=rounded(if(selected) lime else Color.TRANSPARENT,28); b.elevation=if(selected) dp(3).toFloat() else 0f } }
     private fun clear() { content.removeAllViews() }
     @SuppressLint("SetJavaScriptEnabled") private fun market() {
         tab="market"; clear(); val v=web ?: WebView(this).also { web=it }; v.setBackgroundColor(ink); v.settings.javaScriptEnabled=true; v.settings.domStorageEnabled=true; v.settings.loadsImagesAutomatically=true; v.settings.setGeolocationEnabled(true)
-        v.webViewClient=object: WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean { val u=Uri.parse(url); if(u.scheme=="https" && u.host=="mobility-03.vercel.app") return false; startActivity(Intent(Intent.ACTION_VIEW,u)); return true } }
-        v.webChromeClient=object: WebChromeClient() { override fun onGeolocationPermissionsShowPrompt(origin:String, callback:GeolocationPermissions.Callback) { val hasLocation = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED; callback.invoke(origin, origin=="https://mobility-03.vercel.app" && hasLocation, false) } }
-        content.addView(v,LinearLayout.LayoutParams(-1,-1)); if(v.url.isNullOrBlank()) v.loadUrl("https://mobility-03.vercel.app")
+        v.webViewClient=object: WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean { val u=Uri.parse(url); if(u.scheme=="https" && u.host=="mobility-iiitt.vercel.app") return false; startActivity(Intent(Intent.ACTION_VIEW,u)); return true } }
+        v.webChromeClient=object: WebChromeClient() { override fun onGeolocationPermissionsShowPrompt(origin:String, callback:GeolocationPermissions.Callback) { val hasLocation = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED; callback.invoke(origin, origin=="https://mobility-iiitt.vercel.app" && hasLocation, false) } }
+        content.addView(v,LinearLayout.LayoutParams(-1,-1)); if(v.url.isNullOrBlank()) v.loadUrl("https://mobility-iiitt.vercel.app")
     }
     private fun trip() {
         tab="trip"; clear(); val scroll=ScrollView(this); val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(22),dp(24),dp(22),dp(22)); setBackgroundColor(ink) }; scroll.addView(page); content.addView(scroll)
@@ -60,5 +63,6 @@ class MainActivity : ComponentActivity() {
     private fun startTrip(id:String) { RideTrackingService.start(this,id); trip() }
     private fun text(value:String,size:Int,color:Int,bold:Boolean=false)=TextView(this).apply { text=value; textSize=size.toFloat(); setTextColor(color); gravity=Gravity.START; if(bold) setTypeface(typeface,android.graphics.Typeface.BOLD) }
     private fun format(s:Long)=String.format(Locale.getDefault(),"%02d:%02d:%02d",s/3600,(s%3600)/60,s%60)
+    private fun rounded(color:Int,radiusDp:Int)=GradientDrawable().apply { setColor(color); cornerRadius=dp(radiusDp).toFloat() }
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
 }
