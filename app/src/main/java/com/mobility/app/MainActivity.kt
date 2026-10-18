@@ -385,6 +385,17 @@ class MainActivity : ComponentActivity() {
                             setRequestProperty("Accept", "application/vnd.github+json")
                             setRequestProperty("User-Agent", "MOBILITY-Android-Updater")
                         }
+                        if (connection.responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                            connection.disconnect()
+                            runOnUiThread {
+                                dialog.dismiss()
+                                AlertDialog.Builder(this).setTitle("Updates not configured")
+                                    .setMessage("No signed update has been published yet. The update channel becomes available after the stable signing key is configured in GitHub Actions.")
+                                    .setPositiveButton("OK", null).show()
+                            }
+                            return@Thread
+                        }
+                        if (connection.responseCode !in 200..299) throw IllegalStateException("Update server returned HTTP ${connection.responseCode}")
                         val release = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
                         connection.disconnect()
                         val body = release.optString("body")
