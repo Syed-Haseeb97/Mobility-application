@@ -3,15 +3,18 @@ package com.mobility.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.DownloadManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.Environment
 import android.view.Gravity
 import android.view.View
 import android.webkit.GeolocationPermissions
@@ -34,6 +37,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import java.util.Locale
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     private lateinit var root: LinearLayout
@@ -342,7 +348,11 @@ class MainActivity : ComponentActivity() {
             }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10) })
         }
         page.addView(note, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
-        page.addView(actionButton("Back to Explore", true) { market() }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(18) })
+        page.addView(actionButton("Check for app updates", false) { checkForUpdates() }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(18) })
+        page.addView(text("Get the latest Android build directly from MOBILITY. Downloads are verified by Android before installation.", 12, muted).apply {
+            setLineSpacing(dp(3).toFloat(), 1f); setPadding(0, dp(8), 0, dp(4))
+        })
+        page.addView(actionButton("Back to Explore", true) { market() }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(10) })
         updateNav()
     }
 
@@ -356,6 +366,99 @@ class MainActivity : ComponentActivity() {
         }
         parent.addView(row, LinearLayout.LayoutParams(-1, -2))
         if (label != "Trip status") parent.addView(View(this).apply { setBackgroundColor(Color.rgb(46, 51, 47)) }, LinearLayout.LayoutParams(-1, dp(1)))
+    }
+
+
+    private fun checkForUpdates() {
+        AlertDialog.Builder(this)
+            .setTitle("Checking for updates")
+            .setMessage("Looking for the latest MOBILITY Android build…")
+            .setCancelable(false)
+            .show()
+            .also { dialog ->
+                Thread {
+                    try {
+                        val connection = (URL("https://api.github.com/repos/Syed-Haseeb97/Mobility-application/releases/tags/android-latest").openConnection() as HttpURLConnection).apply {
+                            requestMethod = "GET"
+                            connectTimeout = 10000
+                            readTimeout = 10000
+                            setRequestProperty("Accept", "application/vnd.github+json")
+                            setRequestProperty("User-Agent", "MOBILITY-Android-Updater")
+                        }
+                        val release = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+                        connection.disconnect()
+                        val body = release.optString("body")
+                        val latestCode = Regex("versionCode\\s*:\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                            .find(body)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                        val assetUrl = release.optJSONArray("assets")?.let { assets ->
+                            (0 until assets.length()).map { assets.getJSONObject(it) }
+                                .firstOrNull { it.optString("name") == "MOBILITY-latest.apk" }
+                                ?.optString("browser_download_url")
+                        }.orEmpty()
+                        val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                        val currentCode = if (Build.VERSION.SDK_INT >= 28) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+                        runOnUiThread {
+                            dialog.dismiss()
+                            when {
+                                latestCode <= 0L || assetUrl.isBlank() ->
+                                    AlertDialog.Builder(this).setTitle("Updates not configured")
+                                        .setMessage("A downloadable signed build is not published yet. Try again after the update channel is configured.")
+                                        .setPositiveButton("OK", null).show()
+                                latestCode > currentCode ->
+                                    AlertDialog.Builder(this).setTitle("Update available")
+                                        .setMessage("Installed version: ${packageInfo.versionName ?: currentCode}\nLatest version: $latestCode\n\nDownload the update now? Android will ask you to confirm installation.")
+                                        .setNegativeButton("Later", null)
+                                        .setPositiveButton("Download") { _, _ -> downloadUpdate(assetUrl) }.show()
+                                else ->
+                                    AlertDialog.Builder(this).setTitle("You're up to date")
+                                        .setMessage("MOBILITY is already on the latest published Android build.")
+                                        .setPositiveButton("Great", null).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            dialog.dismiss()
+                            AlertDialog.Builder(this).setTitle("Couldn't check for updates")
+                                .setMessage("Check your internet connection and try again. If no signed release has been published yet, the update channel may not be ready.")
+                                .setPositiveButton("OK", null).show()
+                        }
+                    }
+                }.start()
+            }
+    }
+
+    private fun downloadUpdate(url: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            AlertDialog.Builder(this)
+                .setTitle("Allow MOBILITY to install updates")
+                .setMessage("Android requires permission to install an APK downloaded by this app. Enable “Allow from this source”, then tap Check for app updates again.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Open settings") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                }.show()
+            return
+        }
+        try {
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle("MOBILITY Android update")
+                .setDescription("Downloading the latest signed MOBILITY build")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "MOBILITY-latest.apk")
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val id = manager.enqueue(request)
+            getSharedPreferences("mobility_updates", MODE_PRIVATE).edit().putLong("download_id", id).apply()
+            AlertDialog.Builder(this)
+                .setTitle("Download started")
+                .setMessage("Android will notify you when the APK is ready, then open its installer. Keep MOBILITY installed until the update is ready.")
+                .setPositiveButton("OK", null).show()
+        } catch (e: Exception) {
+            AlertDialog.Builder(this).setTitle("Download failed")
+                .setMessage("Couldn't start the APK download. Please try again.")
+                .setPositiveButton("OK", null).show()
+        }
     }
 
     private fun requestAndStart(id: String) {
