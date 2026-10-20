@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Orbital Rings -->
+    <path
+        android:strokeColor="#253327"
+        android:strokeWidth="1.5"
+        android:pathData="M54,54 m-28,0 a28,28 0 1,1 56,0 a28,28 0 1,1 -56,0" />
+    <path
+        android:strokeColor="#304433"
+        android:strokeWidth="1.0"
+        android:pathData="M54,54 m-20,0 a20,20 0 1,1 40,0 a20,20 0 1,1 -40,0" />
+    <!-- M Left Wing (Soft White) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F5F6ED"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M35,68 L35,38 L54,54" />
+    <!-- M Right Wing (Electric Lime) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C8FF3A"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M54,54 L73,38 L73,68" />
+    <!-- Apex Accent Dot -->
+    <path
+        android:fillColor="#C8FF3A"
+        android:pathData="M54,54 m-3.8,0 a3.8,3.8 0 1,1 7.6,0 a3.8,3.8 0 1,1 -7.6,0" />
+</vector>
