@@ -29,6 +29,13 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.animation.ValueAnimator
+import android.animation.ObjectAnimator
+import android.animation.AnimatorSet
+import android.view.animation.AccelerateDecelerateInterpolator
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
+import com.mobility.app.SpeedometerView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityCompat
@@ -74,6 +81,7 @@ class MainActivity : ComponentActivity() {
         }
         shell()
         market()
+        checkForUpdates(silent = true)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (tab == "market" && web?.canGoBack() == true) web?.goBack()
@@ -133,6 +141,32 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun navButton(symbol: String, label: String, value: String) = Button(this).apply {
+        text = "$symbol  $label"
+        isAllCaps = false
+        textSize = 12f
+        letterSpacing = 0.01f
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        setTextColor(if (tab == value) ink else softWhite)
+        background = rounded(if (tab == value) lime else Color.TRANSPARENT, 22)
+        elevation = if (tab == value) dp(2).toFloat() else 0f
+        setPadding(dp(3), 0, dp(3), 0)
+        minHeight = 0
+        minimumHeight = 0
+        stateListAnimator = null
+        // Add click animation (scale) with 300ms ease-out
+        setOnClickListener {
+            // Animate button press effect
+            animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).withEndAction {
+                animate().scaleX(1f).scaleY(1f).setDuration(200).setInterpolator(AccelerateDecelerateInterpolator()).start()
+            }.start()
+            when (value) {
+                "market" -> market()
+                "trip" -> trip()
+                else -> history()
+            }
+            updateNav()
+        }
+    }
         text = "$symbol  $label"
         isAllCaps = false
         textSize = 12f
@@ -228,8 +262,11 @@ class MainActivity : ComponentActivity() {
 
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val speed = metricTile(row1, "CURRENT SPEED", "0", "km/h", true, true)
+        val speedometer = SpeedometerView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(120), 1f)
+        }
         val distance = metricTile(row1, "DISTANCE", "0.00", "km", false, false)
+        row1.addView(speedometer)
         val avg = metricTile(row2, "AVERAGE SPEED", "0.0", "km/h", false, false)
         val top = metricTile(row2, "TOP SPEED", "0.0", "km/h", false, false)
         val metrics = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(row1); addView(row2, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }) }
@@ -280,7 +317,7 @@ class MainActivity : ComponentActivity() {
         }, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(12) })
         page.addView(actionButton("End trip", false) {
             if (TripMetrics.read(this@MainActivity).active) RideTrackingService.stop(this@MainActivity)
-            updateMetrics(speed, distance, avg, top, duration)
+            updateMetrics(speedometer, distance, avg, top, duration)
         }, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(8) })
         page.addView(text("GPS estimates can fluctuate. Low-accuracy fixes and implausible jumps are ignored. These values are not a certified odometer.", 12, muted).apply {
             setLineSpacing(dp(3).toFloat(), 1f); setPadding(0, dp(16), 0, dp(8))
@@ -290,7 +327,7 @@ class MainActivity : ComponentActivity() {
         val tick = object : Runnable {
             override fun run() {
                 if (tab != "trip") return
-                updateMetrics(speed, distance, avg, top, duration)
+                updateMetrics(speedometer, distance, avg, top, duration)
                 handler.postDelayed(this, 1000)
             }
         }
@@ -315,13 +352,18 @@ class MainActivity : ComponentActivity() {
         return value
     }
 
-    private fun updateMetrics(speed: TextView, distance: TextView, avg: TextView, top: TextView, duration: TextView) {
+    private fun updateMetrics(speedometer: SpeedometerView, distance: TextView, avg: TextView, top: TextView, duration: TextView) {
         val m = TripMetrics.read(this)
-        speed.text = String.format(Locale.getDefault(), "%.0f", m.currentSpeedKmh)
-        distance.text = String.format(Locale.getDefault(), "%.2f", m.distanceMeters / 1000.0)
-        avg.text = String.format(Locale.getDefault(), "%.1f", m.averageSpeedKmh)
-        top.text = String.format(Locale.getDefault(), "%.1f", m.maxSpeedKmh)
+        // Animate numeric counters
+        animateNumber(distance, (m.distanceMeters/1000f)) { String.format(Locale.getDefault(), "%.2f", it) }
+        animateNumber(avg, m.averageSpeedKmh) { String.format(Locale.getDefault(), "%.1f", it) }
+        animateNumber(top, m.maxSpeedKmh) { String.format(Locale.getDefault(), "%.1f", it) }
+        // Update speedometer needle and radar pulse (once per second)
+        speedometer.setSpeed(m.currentSpeedKmh.toFloat())
+        speedometer.pulseRadar()
         duration.text = "Duration  " + format(m.elapsedSeconds) + if (m.active) "  ·  TRACKING" else "  ·  ENDED"
+    }
+        // No longer needed old numeric update logic – removed.
     }
 
     private fun history() {
@@ -384,73 +426,87 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun checkForUpdates() {
-        AlertDialog.Builder(this)
-            .setTitle("Checking for updates")
-            .setMessage("Looking for the latest MOBILITY Android build…")
-            .setCancelable(false)
-            .show()
-            .also { dialog ->
-                Thread {
-                    try {
-                        val connection = (URL("https://api.github.com/repos/Syed-Haseeb97/Mobility-application/releases/tags/android-latest").openConnection() as HttpURLConnection).apply {
-                            requestMethod = "GET"
-                            connectTimeout = 10000
-                            readTimeout = 10000
-                            setRequestProperty("Accept", "application/vnd.github+json")
-                            setRequestProperty("User-Agent", "MOBILITY-Android-Updater")
-                        }
-                        if (connection.responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
-                            connection.disconnect()
-                            runOnUiThread {
-                                dialog.dismiss()
-                                AlertDialog.Builder(this).setTitle("Updates not configured")
-                                    .setMessage("No signed update has been published yet. The update channel becomes available after the stable signing key is configured in GitHub Actions.")
-                                    .setPositiveButton("OK", null).show()
-                            }
-                            return@Thread
-                        }
-                        if (connection.responseCode !in 200..299) throw IllegalStateException("Update server returned HTTP ${connection.responseCode}")
-                        val release = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
-                        connection.disconnect()
-                        val body = release.optString("body")
-                        val latestCode = Regex("versionCode\\s*:\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                            .find(body)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                        val assetUrl = release.optJSONArray("assets")?.let { assets ->
-                            (0 until assets.length()).map { assets.getJSONObject(it) }
-                                .firstOrNull { it.optString("name") == "MOBILITY-latest.apk" }
-                                ?.optString("browser_download_url")
-                        }.orEmpty()
-                        val packageInfo = packageManager.getPackageInfo(packageName, 0)
-                        val currentCode = if (Build.VERSION.SDK_INT >= 28) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+    private fun checkForUpdates(silent: Boolean = false) {
+        val dialog = if (!silent) {
+            AlertDialog.Builder(this)
+                .setTitle("Checking for updates")
+                .setMessage("Looking for the latest MOBILITY Android build…")
+                .setCancelable(false)
+                .show()
+        } else null
+
+        Thread {
+            try {
+                val connection = (URL("https://api.github.com/repos/Syed-Haseeb97/Mobility-application/releases/tags/android-latest").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "MOBILITY-Android-Updater")
+                }
+                if (connection.responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+                    connection.disconnect()
+                    if (!silent) {
                         runOnUiThread {
-                            dialog.dismiss()
-                            when {
-                                latestCode <= 0L || assetUrl.isBlank() ->
-                                    AlertDialog.Builder(this).setTitle("Updates not configured")
-                                        .setMessage("A downloadable signed build is not published yet. Try again after the update channel is configured.")
-                                        .setPositiveButton("OK", null).show()
-                                latestCode > currentCode ->
-                                    AlertDialog.Builder(this).setTitle("Update available")
-                                        .setMessage("Installed version: ${packageInfo.versionName ?: currentCode}\nLatest version: $latestCode\n\nDownload the update now? Android will ask you to confirm installation.")
-                                        .setNegativeButton("Later", null)
-                                        .setPositiveButton("Download") { _, _ -> downloadUpdate(assetUrl) }.show()
-                                else ->
-                                    AlertDialog.Builder(this).setTitle("You're up to date")
-                                        .setMessage("MOBILITY is already on the latest published Android build.")
-                                        .setPositiveButton("Great", null).show()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        runOnUiThread {
-                            dialog.dismiss()
-                            AlertDialog.Builder(this).setTitle("Couldn't check for updates")
-                                .setMessage("Check your internet connection and try again. If no signed release has been published yet, the update channel may not be ready.")
+                            dialog?.dismiss()
+                            AlertDialog.Builder(this).setTitle("Updates not configured")
+                                .setMessage("No signed update has been published yet. The update channel becomes available after the stable signing key is configured in GitHub Actions.")
                                 .setPositiveButton("OK", null).show()
                         }
                     }
-                }.start()
+                    return@Thread
+                }
+                if (connection.responseCode !in 200..299) throw IllegalStateException("Update server returned HTTP ${connection.responseCode}")
+                val release = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+                connection.disconnect()
+                val body = release.optString("body")
+                val latestCode = Regex("versionCode\\s*:\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(body)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val assetUrl = release.optJSONArray("assets")?.let { assets ->
+                    (0 until assets.length()).map { assets.getJSONObject(it) }
+                        .firstOrNull { it.optString("name") == "MOBILITY-latest.apk" }
+                        ?.optString("browser_download_url")
+                }.orEmpty()
+                val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                val currentCode = if (Build.VERSION.SDK_INT >= 28) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+                runOnUiThread {
+                    dialog?.dismiss()
+                    when {
+                        latestCode <= 0L || assetUrl.isBlank() -> {
+                            if (!silent) {
+                                AlertDialog.Builder(this).setTitle("Updates not configured")
+                                    .setMessage("A downloadable signed build is not published yet. Try again after the update channel is configured.")
+                                    .setPositiveButton("OK", null).show()
+                            }
+                        }
+                        latestCode > currentCode -> {
+                            AlertDialog.Builder(this)
+                                .setTitle("Update available")
+                                .setMessage("A newer version of MOBILITY is available!\n\nCurrent version: ${packageInfo.versionName ?: currentCode}\nLatest version: $latestCode\n\nDownload and install now directly inside the app?")
+                                .setNegativeButton("Later", null)
+                                .setPositiveButton("Update now") { _, _ -> downloadUpdate(assetUrl) }
+                                .show()
+                        }
+                        else -> {
+                            if (!silent) {
+                                AlertDialog.Builder(this).setTitle("You're up to date")
+                                    .setMessage("MOBILITY is already on the latest published Android build.")
+                                    .setPositiveButton("Great", null).show()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (!silent) {
+                    runOnUiThread {
+                        dialog?.dismiss()
+                        AlertDialog.Builder(this).setTitle("Couldn't check for updates")
+                            .setMessage("Check your internet connection and try again. If no signed release has been published yet, the update channel may not be ready.")
+                            .setPositiveButton("OK", null).show()
+                    }
+                }
             }
+        }.start()
     }
 
     private fun downloadUpdate(url: String) {
@@ -547,7 +603,12 @@ class MainActivity : ComponentActivity() {
     private fun surface() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(14), dp(16), dp(14))
-        background = rounded(panel, 18)
+        // Dark emerald background (#18211A) with subtle lime accent border
+        background = GradientDrawable().apply {
+            setColor(Color.rgb(24,33,26)) // #18211A
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(2), lime) // accent border
+        }
     }
 
     private fun actionButton(label: String, primary: Boolean, action: () -> Unit) = Button(this).apply {
